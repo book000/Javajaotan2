@@ -33,6 +33,7 @@ jobs:
       - name: Update dependencies
         id: update-dependencies
         run: |
+          mvn
           DEPENDENCY=`mvn versions:display-dependency-updates`
           echo $DEPENDENCY
           ESCAPED_DEPENDENCY="${$DEPENDENCY//$'\n'/\\n}"
