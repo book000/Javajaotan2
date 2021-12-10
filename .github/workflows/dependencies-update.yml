@@ -34,9 +34,7 @@ jobs:
         id: update-dependencies
         run: |
           mvn versions:display-dependency-updates
-          DEPENDENCY=`mvn versions:display-dependency-updates`
-          echo $DEPENDENCY
-          echo $DEPENDENCY > ../dependency-updates.md
+          mvn versions:display-dependency-updates | tee ../dependency-updates.md
           mvn versions:use-next-releases
 
       - name: Build with Maven
