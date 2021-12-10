@@ -30,17 +30,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      - name: Install dependencies
-        run: mvn package
-
       - name: Update dependencies
         id: update-dependencies
         run: |
+          mvn versions:display-dependency-updates
           DEPENDENCY=`mvn versions:display-dependency-updates`
           echo A
           echo $DEPENDENCY
           echo B
-          ESCAPED_DEPENDENCY="${$DEPENDENCY//$'\n'/\\n}"
+          ESCAPED_DEPENDENCY="${DEPENDENCY//$'\n'/\\n}"
           echo C
           echo $ESCAPED_DEPENDENCY
           echo D
