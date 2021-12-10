@@ -15,17 +15,17 @@ import cloud.commandframework.ArgumentDescription;
 import cloud.commandframework.Command;
 import cloud.commandframework.CommandComponent;
 import cloud.commandframework.arguments.StaticArgument;
-import cloud.commandframework.exceptions.CommandExecutionException;
-import cloud.commandframework.exceptions.AmbiguousNodeException;
-import cloud.commandframework.exceptions.InvalidSyntaxException;
-import cloud.commandframework.exceptions.NoPermissionException;
-import cloud.commandframework.exceptions.NoSuchCommandException;
+import cloud.commandframework.exceptions.*;
 import cloud.commandframework.execution.AsynchronousCommandExecutionCoordinator;
 import cloud.commandframework.jda.JDA4CommandManager;
 import cloud.commandframework.jda.JDACommandSender;
 import cloud.commandframework.jda.JDAGuildSender;
 import cloud.commandframework.meta.CommandMeta;
 import com.jaoafa.javajaotan2.lib.*;
+import com.jaoafa.javajaotan2.tasks.Task_CheckMailVerified;
+import com.jaoafa.javajaotan2.tasks.Task_MemberOrganize;
+import com.jaoafa.javajaotan2.tasks.Task_PermSync;
+import com.jaoafa.javajaotan2.tasks.Task_SyncOtherServerPerm;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.entities.Guild;
@@ -35,31 +35,38 @@ import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.requests.GatewayIntent;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.quartz.*;
+import org.quartz.impl.StdSchedulerFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.text.MessageFormat;
 import java.util.Arrays;
+import java.util.Enumeration;
 import java.util.Iterator;
+import java.util.List;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 
 public class Main {
     static boolean isUserDevelopMode = false;
     static boolean isGuildDevelopMode = false;
     static long developUserId;
     static long developGuildId;
-    static Logger logger;
+    static Logger logger = LoggerFactory.getLogger("Javajaotan2");
     static JavajaotanConfig config;
     static JDA jda;
     static JSONArray commands;
+    static WatchEmojis watchEmojis;
 
     public static void main(String[] args) {
-        logger = LoggerFactory.getLogger("Javajaotan2");
-
         isUserDevelopMode = new File("../build.json").exists();
         if (isUserDevelopMode) {
             try {
@@ -112,8 +119,14 @@ public class Main {
         }
 
         defineChannelsAndRoles();
+        copyExternalScripts();
 
         registerCommand(jda);
+        registerTask();
+
+        watchEmojis = new WatchEmojis();
+
+        jda.getGuilds().forEach(g -> new InviteLink(g).fetchInvites());
 
         if (!isUserDevelopMode && !isGuildDevelopMode) {
             new HTTPServer().start();
@@ -157,8 +170,7 @@ public class Main {
                 sender -> {
                     MessageReceivedEvent event = sender.getEvent().orElse(null);
 
-                    if (sender instanceof JDAGuildSender) {
-                        JDAGuildSender jdaGuildSender = (JDAGuildSender) sender;
+                    if (sender instanceof JDAGuildSender jdaGuildSender) {
                         return new JDAGuildSender(event, jdaGuildSender.getMember(), jdaGuildSender.getTextChannel());
                     }
 
@@ -167,8 +179,7 @@ public class Main {
                 user -> {
                     MessageReceivedEvent event = user.getEvent().orElse(null);
 
-                    if (user instanceof JDAGuildSender) {
-                        JDAGuildSender guildUser = (JDAGuildSender) user;
+                    if (user instanceof JDAGuildSender guildUser) {
                         return new JDAGuildSender(event, guildUser.getMember(), guildUser.getTextChannel());
                     }
 
@@ -184,7 +195,7 @@ public class Main {
                 (c, e) -> {
                     logger.info("InvalidSyntaxException: " + e.getMessage() + " (From " + c.getUser().getAsTag() + " in " + c.getChannel().getName() + ")");
                     if (c.getEvent().isPresent()) {
-                        if(isGuildDevelopMode && developGuildId != c.getEvent().get().getGuild().getIdLong()){
+                        if (isGuildDevelopMode && developGuildId != c.getEvent().get().getGuild().getIdLong()) {
                             return;
                         }
                         c.getEvent().get().getMessage().reply(String.format("コマンドの構文が不正です。正しい構文: `%s`", e.getCorrectSyntax())).queue();
@@ -197,7 +208,7 @@ public class Main {
                     return;
                 }
                 if (c.getEvent().isPresent()) {
-                    if(isGuildDevelopMode && developGuildId != c.getEvent().get().getGuild().getIdLong()){
+                    if (isGuildDevelopMode && developGuildId != c.getEvent().get().getGuild().getIdLong()) {
                         return;
                     }
                     c.getEvent().get().getMessage().reply("コマンドを使用する権限がありません。").queue();
@@ -208,7 +219,7 @@ public class Main {
                 logger.info("CommandExecutionException: " + e.getMessage() + " (From " + c.getUser().getAsTag() + " in " + c.getChannel().getName() + ")");
                 e.printStackTrace();
                 if (c.getEvent().isPresent()) {
-                    if(isGuildDevelopMode && developGuildId != c.getEvent().get().getGuild().getIdLong()){
+                    if (isGuildDevelopMode && developGuildId != c.getEvent().get().getGuild().getIdLong()) {
                         return;
                     }
                     c.getEvent().get().getMessage().reply(MessageFormat.format("コマンドの実行に失敗しました: {0} ({1})",
@@ -238,10 +249,10 @@ public class Main {
                     CommandPremise cmdPremise = (CommandPremise) instance;
 
                     Command.Builder<JDACommandSender> builder = manager.commandBuilder(
-                        commandName,
-                        ArgumentDescription.of(cmdPremise.details().getDescription()),
-                        cmdPremise.details().getAliases().toArray(new String[0])
-                    )
+                            commandName,
+                            ArgumentDescription.of(cmdPremise.details().getDescription()),
+                            cmdPremise.details().getAliases().toArray(new String[0])
+                        )
                         .meta(CommandMeta.DESCRIPTION, cmdPremise.details().getDescription());
                     if (cmdPremise.details().getAllowRoles() != null) {
                         builder = builder.permission(
@@ -339,6 +350,68 @@ public class Main {
         }
     }
 
+    static void registerTask() {
+        SchedulerFactory factory = new StdSchedulerFactory();
+        List<TaskConfig> tasks = List.of(
+            new TaskConfig(
+                Task_MemberOrganize.class,
+                "memberOrganize",
+                "javajaotan2",
+                DailyTimeIntervalScheduleBuilder
+                    .dailyTimeIntervalSchedule()
+                    .startingDailyAt(TimeOfDay.hourMinuteAndSecondOfDay(0, 0, 0))
+                    .endingDailyAfterCount(1)),
+            new TaskConfig(
+                Task_CheckMailVerified.class,
+                "checkMailVerified",
+                "javajaotan2",
+                DailyTimeIntervalScheduleBuilder
+                    .dailyTimeIntervalSchedule()
+                    .startingDailyAt(TimeOfDay.hourMinuteAndSecondOfDay(0, 0, 0))
+                    .withInterval(5, DateBuilder.IntervalUnit.MINUTE)),
+            new TaskConfig(
+                Task_PermSync.class,
+                "permSync",
+                "javajaotan2",
+                DailyTimeIntervalScheduleBuilder
+                    .dailyTimeIntervalSchedule()
+                    .startingDailyAt(TimeOfDay.hourMinuteAndSecondOfDay(0, 0, 0))
+                    .withInterval(30, DateBuilder.IntervalUnit.MINUTE)),
+            new TaskConfig(
+                Task_SyncOtherServerPerm.class,
+                "otherServerPermSync",
+                "javajaotan2",
+                DailyTimeIntervalScheduleBuilder
+                    .dailyTimeIntervalSchedule()
+                    .startingDailyAt(TimeOfDay.hourMinuteAndSecondOfDay(0, 0, 0))
+                    .withInterval(30, DateBuilder.IntervalUnit.MINUTE))
+        );
+
+        try {
+            Scheduler scheduler = factory.getScheduler();
+            scheduler.start();
+
+            for (TaskConfig task : tasks) {
+                logger.info("registerTask: " + task.name());
+                scheduler.scheduleJob(
+                    JobBuilder.newJob(task.clazz())
+                        .withIdentity(task.name(), task.group())
+                        .build(),
+                    TriggerBuilder.newTrigger()
+                        .withIdentity(task.name(), task.group())
+                        .withSchedule(task.scheduleBuilder())
+                        .build()
+                );
+            }
+        } catch (SchedulerException e) {
+            e.printStackTrace();
+        }
+    }
+
+    record TaskConfig(Class<? extends Job> clazz, String name, String group,
+                      ScheduleBuilder<?> scheduleBuilder) {
+    }
+
     static void defineChannelsAndRoles() {
         if (!new File("defines.json").exists()) {
             return;
@@ -367,12 +440,51 @@ public class Main {
         }
     }
 
+    static void copyExternalScripts() {
+        String srcDirName = "external_scripts";
+        File destDir = new File("external_scripts/");
+
+        final File jarFile = new File(Main.class.getProtectionDomain().getCodeSource().getLocation().getPath());
+
+        if (!jarFile.isFile()) {
+            logger.warn("仕様によりexternal_scriptsディレクトリをコピーできません。ビルドしてから実行すると、external_scriptsを使用する機能を利用できます。");
+            return;
+        }
+        try (JarFile jar = new JarFile(jarFile)) {
+            for (Enumeration<JarEntry> entries = jar.entries(); entries.hasMoreElements(); ) {
+                JarEntry entry = entries.nextElement();
+                if (entry.getName().startsWith(srcDirName + "/") && !entry.isDirectory()) {
+                    File dest = new File(destDir, entry.getName().substring(srcDirName.length() + 1));
+                    File parent = dest.getParentFile();
+                    if (parent != null) {
+                        //noinspection ResultOfMethodCallIgnored
+                        parent.mkdirs();
+                    }
+                    logger.info("[external_scripts] Copy " + entry.getName().substring(srcDirName.length() + 1));
+                    try (FileOutputStream out = new FileOutputStream(dest); InputStream in = jar.getInputStream(entry)) {
+                        byte[] buffer = new byte[8 * 1024];
+                        int s;
+                        while ((s = in.read(buffer)) > 0) {
+                            out.write(buffer, 0, s);
+                        }
+                    }
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
     public static org.slf4j.Logger getLogger() {
         return logger;
     }
 
     public static JavajaotanConfig getConfig() {
         return config;
+    }
+
+    public static void setConfig(JavajaotanConfig config) {
+        Main.config = config;
     }
 
     public static JDA getJDA() {
@@ -393,5 +505,9 @@ public class Main {
 
     public static JSONArray getCommands() {
         return commands;
+    }
+
+    public static WatchEmojis getWatchEmojis() {
+        return watchEmojis;
     }
 }

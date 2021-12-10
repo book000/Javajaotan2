@@ -12,6 +12,7 @@
 package com.jaoafa.javajaotan2.lib;
 
 import com.jaoafa.javajaotan2.Main;
+import org.jetbrains.annotations.Nullable;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.slf4j.Logger;
@@ -21,9 +22,13 @@ import java.io.IOException;
 import java.nio.file.Files;
 
 public class JavajaotanConfig {
-    Logger logger;
+    final Logger logger;
     String token;
     long guild_id;
+    String gcp_key;
+    String customSearchCX;
+    String gasTranslateAPIUrl;
+    String detectLanguageAPIToken;
 
     public JavajaotanConfig() throws RuntimeException {
         logger = Main.getLogger();
@@ -44,6 +49,10 @@ public class JavajaotanConfig {
             // - 設定項目の取得
             token = config.getString("token");
             guild_id = config.optLong("guild_id", 597378876556967936L);
+            gcp_key = config.optString("gcp_key");
+            customSearchCX = config.optString("customSearchCX");
+            gasTranslateAPIUrl = config.optString("gasTranslateAPIUrl");
+            detectLanguageAPIToken = config.optString("detectLanguageAPIToken");
 
             // -- データベース関連
             if (config.has("main_database")) {
@@ -104,5 +113,24 @@ public class JavajaotanConfig {
 
     public long getGuildId() {
         return guild_id;
+    }
+
+    @Nullable
+    public String getGCPKey() {
+        return gcp_key;
+    }
+
+    @Nullable
+    public String getCustomSearchCX() {
+        return customSearchCX;
+    }
+
+    @Nullable
+    public String getGASTranslateAPIUrl() {
+        return gasTranslateAPIUrl;
+    }
+
+    public String getDetectLanguageAPIToken() {
+        return detectLanguageAPIToken;
     }
 }

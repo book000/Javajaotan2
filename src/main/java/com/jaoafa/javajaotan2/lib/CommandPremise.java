@@ -14,6 +14,7 @@ package com.jaoafa.javajaotan2.lib;
 import cloud.commandframework.Command;
 import cloud.commandframework.context.CommandContext;
 import cloud.commandframework.jda.JDACommandSender;
+import com.jaoafa.javajaotan2.Main;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Message;
@@ -41,16 +42,23 @@ public interface CommandPremise {
      */
     default void execute(CommandContext<JDACommandSender> context, CmdFunction handler) {
         MessageChannel channel = context.getSender().getChannel();
-        if (!context.getSender().getEvent().isPresent()) {
+        if (context.getSender().getEvent().isEmpty()) {
             channel.sendMessage("メッセージデータを取得できなかったため、処理に失敗しました。").queue();
             return;
         }
         if (!context.getSender().getEvent().get().isFromGuild()) {
+            Main.getLogger().warn("execute: Guildからのメッセージではない");
             return;
         }
         Guild guild = context.getSender().getEvent().get().getGuild();
         Member member = guild.getMember(context.getSender().getUser());
-        if (member == null) return;
+        if (member == null) {
+            member = guild.retrieveMember(context.getSender().getUser()).complete();
+            if (member == null) {
+                Main.getLogger().warn("execute: member == null");
+                return;
+            }
+        }
         Message message = context.getSender().getEvent().get().getMessage();
         handler.execute(guild, channel, member, message, context);
     }
