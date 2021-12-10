@@ -35,17 +35,10 @@ jobs:
         run: |
           mvn versions:display-dependency-updates
           DEPENDENCY=`mvn versions:display-dependency-updates`
-          echo A
           echo $DEPENDENCY
-          echo B
           ESCAPED_DEPENDENCY="${DEPENDENCY//$'\n'/\\n}"
-          echo C
           echo $ESCAPED_DEPENDENCY
-          echo D
           echo "::set-output name=dependency::$ESCAPED_DEPENDENCY"
-          echo E
-          echo -e $DEPENDENCY > dependencies-update.txt
-          echo F
           mvn versions:use-next-releases
 
       - name: Build with Maven
@@ -68,7 +61,6 @@ jobs:
           hub add -A
           hub commit -m "chore: Update dependencies packages"
           hub push --set-upstream origin dependencies-update-${{ steps.date.outputs.date }}
-          echo "\`\`\`\n${{ steps.update-dependencies.outputs.dependency }}\n\`\`\`" > description.md
-          hub pull-request -b master -m "Update dependencies packages" -r book000 -F description.md
+          hub pull-request -b master -m "Update dependencies packages" -r book000 -M "\`\`\`\n${{ steps.update-dependencies.outputs.dependency }}\n\`\`\`"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
