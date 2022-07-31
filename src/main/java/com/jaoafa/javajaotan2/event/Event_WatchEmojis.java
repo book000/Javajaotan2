@@ -55,8 +55,8 @@ public class Event_WatchEmojis extends ListenerAdapter {
             return;
         }
         MessageEmbed embed = new EmbedBuilder()
-            .setAuthor(user.getAsTag(), "https://discord.com/users/" + user.getId(), user.getAvatarUrl())
             .setTitle(String.format(":new:NEW EMOJI : %s (`:%s:`)", emoji.getAsMention(), emoji.getName()))
+            .setAuthor(user.getAsTag(), "https://discord.com/users/" + user.getId(), user.getAvatarUrl())
             .setThumbnail(emoji.getImageUrl())
             .setTimestamp(Instant.now())
             .build();
